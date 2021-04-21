@@ -1,8 +1,25 @@
-module_param(name, type, perm)
+1.module_param(name, type, perm)
 	int age = 0;
 	module_param(age, int, 权限)
-module_param_array(name, type, num, perm)
-module_param_cb(name, ops, arg, perm)
+
+2.module_param_array(name, type, num, perm)
+3.module_param_cb(name, ops, arg, perm)
+在命令行下对参数进行修改的时候会触发ops中是函数调用
+	int set_fun(const char *val, const struct kernel_param *kp) {
+		int res = param_set_int(val, kp); // 系统默认的set函数，判断是否接收到一个int类型的变量
+		if(res == 0) {
+			... ...
+			return 0;
+		}
+		return -1;
+	}
+	
+	const struct kernel_param_ops age_param_ops = {
+		.set = &set_fun;
+		.get = &get_fun; // param_get_int  系统默认的get函数
+	}
+	
+	module_param_cb(age, &age_param_ops, &age, 权限);
 
 权限：对应参数在文件节点的权限
 /sys/modules/hello/paramters/age	值即为加载模块时参数传递的值
@@ -11,3 +28,4 @@ perm:	S_IRWXUGO
 	S_IRUGO
 	S_IWUGO
 	S_IXUGO
+
