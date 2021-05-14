@@ -1,0 +1,322 @@
+添加自定义的slab类型：
+start_kernel -> kmem_cache_init -> create_kmalloc_caches -> new_kmalloc_cache -> create_kmalloc_cache -> list_add(&s->list, &slab_caches) 
+kmem_cache_create -> create_cache -> create_cache -> create_kmalloc_cache -> list_add(&s->list, &slab_caches)
+
+
+页框分配2.6.11：
+__alloc_pages（struct zonelist *zonelist（已经在外面确定了是去那个node中拿内存了））
+	for (i = 0; (z = zones[i]（某个node的4个zone）) != NULL; i++) { // everynode  pglist_data->node_zonelists[GFP_ZONETYPES]不同node，里面是每个node的4个zone
+		buffered_rmqueue(z, order, gfp_mask);
+		if (order == 0) {
+			if (pcp->count <= pcp->low)
+				rmqueue_bulk(zone, 0, pcp->batch, &pcp->list);//buddy中加到每cpu高速缓存
+					__rmqueue(zone, 0);
+			page = list_entry(pcp->list.next, struct page, lru);// 拿一页
+		}
+		__rmqueue(zone, order);//直接去buddy中拿
+	}
+			
+内核调用栈打印：
+dump_stack()
+
+内核的主内核页全局目录的基地址:
+swapper_pg_dir[1024]
+
+将初始化好的内核页全局目录地址写入cr3寄存器
+load_cr3(swapper_pg_dir)
+
+每次修改了页表都需要刷新一下：
+__flush_tlb_all()
+
+向上向下取整：(二进制)
+round_up(x,y):                x: 11010010              y: 1000              结果; 11011000
+round_up(x,y):                x: 11011010              y: 1000              结果: 11100000
+round_down(x,y):              x: 11010010              y: 1000              结果: 11010000
+round_down(x,y)               x: 11011010              y: 1000              结果: 11011000
+
+
+内核会将所有struct page* 放到一个全局数组中:
+mem_map
+而内核中我们常会看到pfn，说得就是页帧号，也就是数组的index
+
+根据pte的值获得mem_map数组中page的结构体的指针：
+#define pte_page(x) (mem_map+((unsigned long)(((x).pte_low >> PAGE_SHIFT))))
+
+struct page* 和 pfn页帧号之间转换:
+__pfn_to_page
+__page_to_pfn
+
+struct page*和物理地址之间进行转换:
+phys_to_page(phys)
+page_to_phys(page)
+
+struct page*和内核逻辑/线性地址之间进行转换:
+virt_to_page(kaddr)		(mem_map + (__pa(kaddr) >> PAGE_SHIFT))
+page_to_virt(page)
+
+物理地址和虚拟地址的转化：
+__pa(x)
+__va(x)
+
+根据是否是高端内存返回page的虚拟地址：
+void *page_address(const struct page *page)
+	if (!PageHighMem(page))
+        return lowmem_page_address(page);
+
+返回page结构的：
+struct page * alloc_pages(gfp_mask, order)          	// 分配 1<<order 个连续的物理页
+struct page * alloc_page(gfp_mask)                     	// 分配一个物理页
+ 
+返回page对应的逻辑地址的：
+__get_free_pages(gfp_mask, order)                    	// 和alloc_pages一样，只不过返回的是第一个页的内核逻辑地址
+__get_free_page(gfp_mask)                              	// 返回一个页的逻辑地址
+
+
+
+将管理区ZONE的伙伴系统置空(初始换伙伴系统):
+start_kernel -> setup_arch -> bootmem_init -> zone_sizes_init -> free_area_init_nodes -> free_area_init_node -> free_area_init_core -> for(一个node中所有的zone) -> init_currently_empty_zone -> zone_init_free_lists
+																																				 -> memmap_init -> memmap_init_zone -> if ((z->zone_start_pfn <= pfn) && (pfn < zone_end_pfn(z)) && !(pfn & (pageblock_nr_pages - 1)))
+																																														set_pageblock_migratetype(page, MIGRATE_MOVABLE);   // 该区所有页都设置为MIGRATE_MOVABLE
+
+高端地址的初始化：
+start_kernel -> mm_init -> mem_init -> set_highmem_pages_init(便利每个node的每个高端zone) -> add_highpages_with_active_regions(将zone的开始到结束free到伙伴系统) -> free_highmem_page -> __free_reserved_page -> __free_page
+
+系统中总页数量：
+totalram_pages
+高端内存页数量：
+totalhigh_pages
+
+在系统初始化阶段会先启用一个bootmem分配器，此分配器是专门用于启动阶段的，一个bootmem分配器管理着一个node结点的所有内存，也就是在numa架构中多个node有多个bootmem，他们被链入bdata_list链表中保存。而伙伴系统的初始化就是将bootmem管理的所有物理页框释放到伙伴系统中去。
+
+低端地址的初始化：
+start_kernel -> mm_init -> mem_init -> free_all_bootmem -> free_all_bootmem_core -> __free_pages_bootmem -> __free_pages_boot_core -> __free_pages
+
+预取指令，该指令用于把将要使用到的数据从内存提前装入缓存中，以减少访问主存的指令执行时的延迟:
+prefetchw(p);
+
+页分配：
+alloc_pages -> alloc_pages_node -> __alloc_pages_node -> __alloc_pages -> __alloc_pages_nodemask -> get_page_from_freelist
+																								 -> __alloc_pages_slowpath
+
+
+
+lru缓存后将如何把缓存中的也放入lru链表中：
+将不处于lru链表的新页放入到lru链表中：static void __lru_cache_add(struct page *page)
+将非活动lru链表中的页移动到非活动lru链表尾部(活动页不需要这样做，后面说明)：void rotate_reclaimable_page(struct page *page)
+将处于活动lru链表的页移动到非活动lru链表：void activate_page(struct page *page)
+将处于非活动lru链表的页移动到活动lru链表: void activate_page(struct page *page)
+最后都会调用static void pagevec_lru_move_fn(struct pagevec *pvec, void (*move_fn)(struct page *page, struct lruvec *lruvec, void *arg), void *arg)将会遍历缓存链表中的page
+
+设置内存阀值：
+__setup_per_zone_wmarks()
+
+根据页大小向上补全
+PAGE_ALIGN(addr) -> ALIGN(addr, PAGE_SIZE) 
+
+ioremap()
+	__arm_ioremap()
+		__arm_ioremap_caller()
+			__arm_ioremap_pfn_caller()
+				get_vm_area_caller() // 在内核vmalloc中找到一块满足size大小的区域
+					kzalloc_node() // 申请一块vm_struct空间用于加入红黑树
+					alloc_vmap_area() // 在vmalloc中找到size大小的空间
+					insert_vmalloc_vm() // 插入红黑树
+				remap_area_pages() // 建立映射
+
+
+vmalloc() // 和kmalloc不一样的是他不走slab机制，而是直接去页框分配器拿空间，所以申请小空间的时候会很浪费
+	__vmalloc(__GFP_HIGHMEM) // 重highzone开始向下便利
+		__vmalloc_node()
+			get_vm_area_node() // 在vmalloc中找到size大小的空间
+				kzalloc_node() // 申请一块vm_struct空间用于加入红黑树
+			__vmalloc_area_node()
+				alloc_pages_node(order=0) // 用页框分配器申请单个页框
+				map_vm_area() // 建立映射
+				
+
+max-file ：表示系统级别的能够打开的文件句柄的数量。是对整个系统的限制，并不是针对用户的。
+ulimit -n ：控制进程级别能够打开的文件句柄的数量。提供对shell及其启动的进程的可用文件句柄的控制。这是进程级别的
+
+
+Makefile 出来的.config文件在os下查看：
+zcat /proc/config.gz | grep CONFIG_EFI 
+
+内存中的最低水线：
+cat /proc/sys/vm/min_free_kbytes
+
+
+显示各个zone的buddy分配：
+cat /proc/buddyinfo
+
+显示各个slab的信息：
+cat /proc/slabinfo
+
+显示内存使用详细表如slab用了多少，脏页有多少：
+cat /proc/meminfo
+
+显示各个zone的信息：：
+cat /proc/zoneinfo
+
+修改mallopt(用户空间)：
+mallopt（M_TRIM_ THRESHOLD,X）//当lib库中的有x空闲空间时，将空间释放给伙伴系统
+
+kmalloc申请的内存在narmal zone：
+可以用p_t_v     v_t_p只是一给基地址的偏移
+vmalloc，ioremap申请内存的内存会先在高端zone：
+
+
+虚拟地址（3-4g）
+内存空间->低端内存映射区（vmalloc）：用到的时候映射
+	  高端内存映射区（kmalloc）：开机自动映射好了，可以用p_t_v     v_t_p只是一给基地址的偏移
+
+
+ioremap->__arm_ioremap->__arm_ioremap_caller->__arm_ioremap_pfn_caller(页位置,页内偏移,映射大小,类型)->get_vm_area_caller->__get_vm_area_node->kzalloc_node(申请一个struct vm_struct空间,存放未使用空间信息初始化,标志：GFP_KERNEL)/alloc_vmap_area(查找红黑树，找到 VMALLOC_START和 VMALLOC_END之间满足 size 大小的未使用空间)/insert_vmalloc_vm(将该结构体插入到红黑树)
+
+查看ioremap和vmalloc映射的内存：
+cat /proc/vmallocinfo
+
+内核标记：
+内核的函数会有一个记号表：/proc/kallsyms
+在编译的时候会去查看sdk的源码树。查看是否有用到的标记，如果没有会报warning，目录在：dependency/soc/mdcpro610_release_audi/hisi/crossbuild_sysroot/lib/modules/linux-headers-4.19.95+/Module.symvers 下
+
+oom__kill.c->badness(）给oom_score打分
+查看oom得分：
+cat /proc/xxxx/oom_score
+oom_score的分数的倍数：
+cat /proc/xxxx/oom_adj
+
+关闭交换分区：
+swapoff -a 
+不判断用户空间申请的内存是否大于本机还剩余的内存:
+echo 1 > /proc/sys/vm/overcommit_memory
+
+得出一个进程的id：
+pidof exe
+
+当发生oom时系统异常(奔溃)：
+echo 1 > /proc/sys/vm/panic_on_oom
+
+将一固虚拟地址中的东西考到一个page中：
+static inline bool cow_user_page(struct page *dst, struct page *src,
+				 struct vm_fault *vmf)
+
+查看莫格执行中的进程的vma:
+pmap pid
+cat /proc/pid/maps
+cat /proc/pid/smaps(具体)
+
+通过修改 proc 系统的 drop_caches 清理free的cache
+echo 3 > /proc/sys/vm/drop_caches
+
+查看运行时间：
+time xxx.exe
+
+查看详细执行时间如：io调度
+\time -v xxx.exe
+
+列出每个进程的uss pss rss :
+smem （--pie/bar）//饼柱状图
+smem -P pid
+
+查看内存泄漏的方式：
+1 放在valgrind虚拟机中跑：
+  valgrind --tool =memcheck --leak-check=yes xxx.exe
+  会报出在那个代码的第几行申请内存没释放
+2 在编译的时候就进行查询：添加编译选项
+  gcc -g -fsanitize=address xxx.exe
+
+查看slab的使用情况：
+slabtop
+
+
+
+
+
+
+进程调度：
+
+
+将pid的进程的cpu利用率降到10%：
+cpulimit -l 10 -p pid
+
+子进程跑完或者死了，会保留task_struct用来保留子进程的死亡信息父进程通过waitpid读出信息，没读的时刻子进程状态为僵尸态（僵尸态的时候只能通过读死亡信息或者杀父进程才能将其破坏掉）
+
+创建进程api:
+fork()
+
+创建进程api:
+pthread_create()最后会掉clone(所有资源的指针)
+
+获得tgid号:
+getpid()
+
+获得pid号:
+gettid()
+
+进程视角：top
+线程视角：top -H
+
+进程托孤：
+父死子被托孤向上到一固subreaper的进程或者init进程
+设置进程为subreaper进程：prctl(PR_SET_CHILD_SUBREAPER, 1)
+
+0号进程：IDLE
+
+多线程进程查看：
+/proc/pid/task/xxx xxx xxx
+
+查看进程信息：
+/proc/pid/status
+
+cow写实复用技术：
+谁先写谁产生缺页中断 然后分配页 拷贝数据 修改数据
+
+在/proc/sys/kernel/sched_rt_period_us秒时间内中RT最多可以跑/proc/sys/kernel/sched_rt_runtime_us秒
+
+修改一进程的nice值：
+renice -n -nice值 -g(这个进程的所有线程)/p(线程) pid
+nice -n nice值 ./app
+
+chrt -f(FIFO) -a(所有的线程) -p 优先级 pid
+
+设置进程亲和力：
+taskset -a -p cpu_mask pid
+
+设置中断亲和力：
+echo 01 > /proc/irq/中断号/smp_affinity
+
+设置进程亲和力的函数：
+sched_set_affinity() （用来修改位掩码）
+查看进程亲和力的函数：
+sched_get_affinity() （用来查看当前的位掩码）
+
+//初始化，设为空
+void CPU_ZERO (cpu_set_t *set); 
+//将某个cpu加入cpu集中 
+void CPU_SET (int cpu, cpu_set_t *set); 
+//将某个cpu从cpu集中移出 
+void CPU_CLR (int cpu, cpu_set_t *set); 
+//判断某个cpu是否已在cpu集中设置了 
+int CPU_ISSET (int cpu, const cpu_set_t *set); 
+设置线程亲和力的函数：
+int pthread_setaffinity_np(pthread_tthread, size_t cpusetsize， const cpu_set_t * cpuset ); 
+查看线程亲和力的函数：
+int pthread_getaffinity_np(pthread_t thread, size_t cpusetsize,  cpu_set_t * cpuset );
+
+创建cgroup:
+cd sys/fs/cgroup/cpu
+
+cgroup的权重：
+/sys/fs/cgroup/cpu/xxxgroup/cpu.shares
+
+进程加组：
+echo pid > /sys/fs/cgroup/cpu/xxxgroup/cgroup.procs
+
+线程加组：
+echo pid > /sys/fs/cgroup/cpu/xxxgroup/tasks
+
+xxxgroup组中的所有进程/sys/fs/cgroup/cpu/xxxgroup/cpu.rt_period_us周期内最多能跑/sys/fs/cgroup/cpu/xxxgroup/cpu.cfs_quota_us这么多时间
+
+
+
+

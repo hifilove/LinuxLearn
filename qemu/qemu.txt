@@ -1,0 +1,22 @@
+cat ~/qemu/qemu.sh
+sudo qemu-system-aarch64           \
+        -kernel $1  \
+        -m  16000  \
+        -smp 8  \
+        -initrd $2      \
+        -cpu cortex-a57 -nographic      \
+        -machine virt,kernel_irqchip=on \
+        -append "console=ttyAMA0 rdinit=/sbin/init nohz_full=1 earlycon=pl011,0x9000000 default_hugepagesz=2M nr_hugepages=25 coredump_filter=0x3 "    \
+        -rtc base=localtime     \
+        -device virtio-net-device,netdev=net0,mac=06:54:04:61:06:8D     \
+        -netdev type=tap,id=net0,script=no,downscript=no,ifname=tap$3 \
+        -S -s
+        #-machine dumpdtb=k_v.dtb \
+        #-gdb
+        #-append "console=ttyAMA0 rdinit=/sbin/init nohz_full=1 earlycon=pl011,0x9000000 default_hugepagesz=2M nr_hugepages=25 coredump_filter=0x3"    \
+
+./qemu.sh  /home/l00484248/kernel/yocto/src/kernel-opensource/kernel/kernel/arch/arm64/boot/Image  ./yangxiaohong/filesystem-xxx.cpio.gz 0
+
+ gdb vmlinux
+
+ target remote localhost:1234

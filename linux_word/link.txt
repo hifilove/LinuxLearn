@@ -1,0 +1,14 @@
+Linux中CPU亲和性(affinity)：
+https://blog.csdn.net/dxpqxb/article/details/78254112?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522161646395816780261922932%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=161646395816780261922932&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-1-78254112.first_rank_v2_pc_rank_v29&utm_term=affinity 
+
+
+内核抢占：
+宋宝华： 是谁关闭了Linux抢占，而抢占又关闭了谁？
+
+
+Ioremap：
+https://blog.csdn.net/qq_16777851/article/details/82261185?ops_request_misc=%25257B%252522request%25255Fid%252522%25253A%252522160870471816780302917196%252522%25252C%252522scm%252522%25253A%25252220140713.130102334..%252522%25257D&request_id=160870471816780302917196&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~baidu_landing_v2~default-5-82261185.first_rank_v2_pc_rank_v29&utm_term=ioremap
+
+
+彻底理解mmap()：
+https://blog.csdn.net/Lrara/article/details/104995815?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522161795104616780366576940%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=161795104616780366576940&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-1-104995815.first_rank_v2_pc_rank_v29&utm_term=%E5%BD%BB%E5%BA%95%E7%90%86%E8%A7%A3mmap%28%29
