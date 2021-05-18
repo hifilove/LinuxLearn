@@ -79,6 +79,40 @@ start_kernel // init/main.c
 
 
 
+
+    init_IRQ();
+        if (IS_ENABLED(CONFIG_OF) && !machine_desc->init_irq)
+            irqchip_init();   // 一般使用它
+				irqchip_init // drivers/irqchip/irqchip.c
+					of_irq_init(__irqchip_of_table);  // 对设备树文件中每一个中断控制器节点, 调用对应的处理函数
+						为每一个符合的"interrupt-controller"节点,
+						分配一个of_intc_desc结构体, desc->irq_init_cb = match->data; // = IRQCHIP_DECLARE中传入的函数
+						并调用处理函数
+						
+						(先调用root irq controller对应的函数, 再调用子控制器的函数, 再调用更下一级控制器的函数...)
+						for_each_matching_node_and_match(np, matches, &match) { //找出节点的compteb属性和desc一样的节点
+								if (!of_property_read_bool(np, "interrupt-controller") // 如果是中断控制器
+									continue;
+
+								
+								desc = kzalloc(sizeof(*desc), GFP_KERNEL);
+								desc->irq_init_cb = match->data; // 把初始化放在irq_init_cb中
+								list_add_tail(&desc->list, &intc_desc_list);
+							}
+
+							while (!list_empty(&intc_desc_list)) {
+								
+								list_for_each_entry_safe(desc, temp_desc, &intc_desc_list, list) {
+									ret = desc->irq_init_cb(desc->dev, desc->interrupt_parent); // 调用irq_init_cb
+								}
+							}
+
+        else
+            machine_desc->init_irq();
+
+
+
+
     rest_init();
         pid = kernel_thread(kernel_init, NULL, CLONE_FS);
                     kernel_init
