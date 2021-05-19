@@ -135,6 +135,67 @@ start_kernel // init/main.c
 																	for_each_child_of_node(bus, child) {    // 取出每一个子节点
 																		pr_debug("   create child: %pOF\n", child);
 																		rc = of_platform_bus_create(child, matches, lookup, &dev->dev, strict);   // 处理它的子节点, of_platform_bus_create是一个递归调用
+																			// 遇到pinctrl控制器
+																			samsung_pinctrl_probe  // drivers/pinctrl/samsung/pinctrl-samsung.c
+																				最终会调用到 s3c24xx_eint_init // drivers/pinctrl/samsung/pinctrl-s3c24xx.c
+																				
+																					// eint0,1,2,3的处理函数在处理root irq controller时已经设置; 
+																					// 设置eint4_7, eint8_23的处理函数(它们是分发函数)
+																					for (i = 0; i < NUM_EINT_IRQ; ++i) {
+																						unsigned int irq;
+
+																						if (handlers[i]) /* add by weidongshan@qq.com, 不再设置eint0,1,2,3的处理函数 */
+																						{
+																							irq = irq_of_parse_and_map(eint_np, i);
+																							if (!irq) {
+																								dev_err(dev, "failed to get wakeup EINT IRQ %d\n", i);
+																								return -ENXIO;
+																							}
+
+																							eint_data->parents[i] = irq;
+																							irq_set_chained_handler_and_data(irq, handlers[i], eint_data);
+																						}
+																					}
+
+																					// 为GPF、GPG设置irq_domain
+																					for (i = 0; i < d->nr_banks; ++i, ++bank) {
+																					
+																						ops = (bank->eint_offset == 0) ? &s3c24xx_gpf_irq_ops
+																										   : &s3c24xx_gpg_irq_ops;
+
+																						bank->irq_domain = irq_domain_add_linear(bank->of_node, bank->nr_pins, ops, ddata);
+																					}
+																			
+																			
+																			// 遇到有人使用某个中断控制器的domain的时候
+																			of_device_alloc (drivers/of/platform.c)
+																				dev = platform_device_alloc("", PLATFORM_DEVID_NONE);  // 分配 platform_device
+																				
+																				num_irq = of_irq_count(np);  // 计算中断数
+																				
+																				of_irq_to_resource_table(np, res, num_irq) // drivers/of/irq.c, 根据设备节点中的中断信息, 构造中断资源
+																					of_irq_to_resource
+																						int irq = of_irq_get(dev, index);  // 获得virq, 中断号
+																										rc = of_irq_parse_one(dev, index, &oirq); // drivers/of/irq.c, 解析设备树中的中断信息, 保存在of_phandle_args结构体中
+																										
+																										domain = irq_find_host(oirq.np);   // 查找irq_domain, 每一个中断控制器都对应一个irq_domain
+																										
+																										irq_create_of_mapping(&oirq);             // kernel/irq/irqdomain.c, 创建virq和中断信息的映射
+																											irq_create_fwspec_mapping(&fwspec);
+																												irq_create_fwspec_mapping(&fwspec);
+																													irq_domain_translate(domain, fwspec, &hwirq, &type) // 调用irq_domain->ops->xlate, 把设备节点里的中断信息解析为hwirq, type
+																													
+																													virq = irq_find_mapping(domain, hwirq); // 看看这个hwirq是否已经映射, 如果virq非0就直接返回
+																													
+																													virq = irq_create_mapping(domain, hwirq); // 否则创建映射
+																																virq = irq_domain_alloc_descs(-1, 1, hwirq, of_node_to_nid(of_node), NULL);  // 返回未占用的virq
+																																
+																																irq_domain_associate(domain, virq, hwirq) // 调用irq_domain->ops->map(domain, virq, hwirq), 做必要的硬件设置
+																		
+																		
+																			// 驱动程序从platform_device的"中断资源"取出中断号, 就可以request_irq了
+																			
+																			
 																		if (rc) {
 																			of_node_put(child);
 																			break;
