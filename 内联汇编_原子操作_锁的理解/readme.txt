@@ -99,6 +99,15 @@
 	atomic_dec_and_test(v) 		先减 1，再判断新值是否等于 0；等于 0 的话，返回值为 1
 	
 	
+	函数名 						作用
+	set_bit(nr,p) 				设置(*p)的 bit nr 为 1
+	clear_bit(nr,p) 			清除(*p)的 bit nr 为 0
+	change_bit(nr,p) 			改变(*p)的 bit nr，从 1 变为 0，或是从 0 变为 1
+	test_and_set_bit(nr,p) 		设置(*p)的 bit nr 为 1，返回该位的老值
+	test_and_clear_bit(nr,p) 	清除(*p)的 bit nr 为 0，返回该位的老值
+	test_and_change_bit(nr,p) 	改变(*p)的 bit nr，从 1 变为 0，或是从 0 变为 1；返回该位的老值
+	
+	
 
 
 	
