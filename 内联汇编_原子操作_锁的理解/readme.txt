@@ -108,6 +108,10 @@
 	test_and_change_bit(nr,p) 	改变(*p)的 bit nr，从 1 变为 0，或是从 0 变为 1；返回该位的老值
 	
 	
+	
+
+	
+	
 
 
 	
