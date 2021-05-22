@@ -109,10 +109,55 @@
 	
 	
 	
+	
+	
+spin_lock: http://www.wowotech.net/kernel_synchronization/spinlock.html
+	up/内核不支持preempt:
+		spin_lock == null;
+		
+	up/内核支持preempt: 关闭了本cpu中的内核抢占，及执行完临界资源后才会被调度出去，但是如果中断也有用到这个资源的话，就用spin_lock_irq会去关闭中断local_irq_disable
+																				   但是如果软中断也有用到这个资源的话，就用spin_lock_bh会去关闭软中断
+		spin_lock
+			raw_spin_lock
+				_raw_spin_lock
+					__LOCK {do { preempt_disable(); ___LOCK(lock); } while (0) } // 关抢占-关闭本cpu中的抢占
+						___LOCK{ do { __acquire(lock); (void)(lock); } while (0) }
+							__acquire(lock) == (void)0
+	
+	smp: 保证公平，先到先得,添加tickets机制来取票
+		spin_lock
+			raw_spin_lock
+				_raw_spin_lock
+					__raw_spin_lock
+						preempt_disable(); // 关抢占-关闭本cpu中的抢占
+						LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
+							do_raw_spin_lock
+								arch_spin_lock
+										unsigned long tmp;
+										u32 newval;
+										arch_spinlock_t lockval;
 
+										prefetchw(&lock->slock);
+										__asm__ __volatile__( // 取出tickets的值放入自己的取号数中，然后把叫号加一写回，
+									"1:	ldrex	%0, [%3]\n"
+									"	add	%1, %0, %4\n"
+									"	strex	%2, %1, [%3]\n"
+									"	teq	%2, #0\n"
+									"	bne	1b"
+										: "=&r" (lockval), "=&r" (newval), "=&r" (tmp)
+										: "r" (&lock->slock), "I" (1 << TICKET_SHIFT)
+										: "cc");
+
+										while (lockval.tickets.next != lockval.tickets.owner) { // 如果叫号数不等于自己的取号数
+											wfe(); // 低功耗睡眠 详见wfi/wfe有讲
+											lockval.tickets.owner = READ_ONCE(lock->tickets.owner);
+										}
+										// 直到自己的号被叫到，跳出while
+										smp_mb();
 	
 	
 
 
-	
+semaphore和mutex类似：
+	有一个值，对值进行加减，小于零之后会把当前进程放在等待队列(因为队列也是资源，所以用到了spin来保护队列资源的竞争)上面，等有资源释放后会将等待队列上的进程跑起来
 
