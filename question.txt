@@ -1,3 +1,7 @@
 关了抢占后，正常的cfs调度会不会被关闭？
 
 在spin中sleep，是不是内核变成无法调度的流水线？
+
+i2c_smbus_write_byte_data  i2c_tools 中的函数调用？
+最后调用到i2c-dev中的ioctrl然后调用对应的adpter中的alog中的传输函数，具体见i2c-dev.c分析
+
